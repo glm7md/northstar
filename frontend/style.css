@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+
 :root {
     --navy: #102b46;
     --navy-deep: #0a1c2d;
@@ -18,9 +20,12 @@
 
 body {
     margin: 0;
+    min-height: 100vh;
     background: var(--paper);
     color: var(--ink);
-    font-family: 'DM Sans', Arial, "Helvetica Neue", sans-serif;
+    font-family: 'Cairo', Tahoma, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
 }
 
 html:has(.year-selection-page),
@@ -31,6 +36,10 @@ body:has(.year-selection-page) {
 #app,
 #adminApp {
     width: 100%;
+}
+
+#app {
+    flex: 1;
 }
 
 button,
@@ -2422,12 +2431,16 @@ a {
     }
 }
 .site-footer {
-    min-height: 30px;
+    width: 100%;
+    margin-top: auto;
     text-align: center;
-    padding: 0 16px 12px;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 18px;
+    padding: 12px 16px;
+    color: #71808d;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+    background: rgba(255, 255, 255, 0.75);
+    border-top: 1px solid var(--line);
 }
 
 .admin-login-page > .site-footer {
@@ -2436,7 +2449,7 @@ a {
     bottom: 12px;
     left: 0;
     min-height: 0;
-    padding: 0 16px;
+    padding: 10px 16px;
     color: rgba(255, 255, 255, 0.7);
 }
 
@@ -2446,9 +2459,7 @@ a {
 
 .main > .site-footer,
 .admin-main > .site-footer {
-    min-height: 0;
     margin-top: auto;
-    padding: 12px 0 0;
 }
 
 .enrollment-row {

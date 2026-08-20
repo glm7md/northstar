@@ -225,15 +225,17 @@
         const layout = document.querySelector('.shell, .admin-shell');
         const contentColumn = layout
             ? layout.querySelector('.main, .admin-main')
-            : document.querySelector('.year-selection-page, .admin-login-page, #app, #adminApp');
+            : document.querySelector('.year-selection-page, .admin-login-page');
         if (!contentColumn) return;
 
         let footer = document.querySelector('.site-footer');
         if (!footer) {
             footer = document.createElement('footer');
             footer.className = 'site-footer';
-            footer.textContent = '© 2026 Northstar University. All Rights Reserved.';
+            footer.textContent = '© 2026 دكتور ماجد. جميع الحقوق محفوظة.';
         }
+
+        footer.textContent = '© 2026 دكتور ماجد. جميع الحقوق محفوظة.';
 
         if (footer.parentElement !== contentColumn) {
             contentColumn.appendChild(footer);
