@@ -16,6 +16,7 @@ const {
   lectureUpdateSchema,
   quizUpsertSchema,
   studentCreateSchema,
+  studentUpdateSchema,
   enrollmentUpdateSchema,
   publishScoreSchema,
 } = require('../validators/schemas');
@@ -56,6 +57,7 @@ router.put(
 
 router.get('/students', studentsController.listStudents);
 router.post('/students', validate(studentCreateSchema), studentsController.createStudent);
+router.put('/students/:studentId', validate(studentUpdateSchema), studentsController.updateStudent);
 router.delete('/students/:studentId', studentsController.deleteStudent);
 router.put(
   '/students/:studentId/enrollment',

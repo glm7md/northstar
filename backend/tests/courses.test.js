@@ -81,6 +81,33 @@ describe('Admin course & student management', () => {
     expect(res.status).toBe(409);
   });
 
+  test('admin can update a student email, username, year, and password', async () => {
+    const created = await request(app)
+      .post('/api/admin/students')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Edit Student', email: 'edit-old@example.com', password: 'oldpass', year: 'First Year' });
+
+    const res = await request(app)
+      .put(`/api/admin/students/${created.body.student.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'edit-new@example.com',
+        username: 'edit-student',
+        password: 'newpass',
+        year: 'Second Year',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.student).toEqual(expect.objectContaining({
+      email: 'edit-new@example.com',
+      username: 'edit-student',
+      year: 'Second Year',
+    }));
+
+    const login = await loginAs(app, 'edit-student', 'newpass');
+    expect(login.user.role).toBe('student');
+  });
+
   test('admin student list never contains password hashes', async () => {
     const res = await request(app).get('/api/admin/students').set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);

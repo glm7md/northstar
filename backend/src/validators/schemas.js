@@ -74,6 +74,13 @@ const studentCreateSchema = z.object({
   year: z.enum(YEARS).default('First Year'),
 });
 
+const studentUpdateSchema = z.object({
+  email: z.string().trim().min(1, 'Email is required.').max(180),
+  username: z.string().trim().min(1, 'Username is required.').max(180),
+  year: z.enum(YEARS),
+  password: z.string().min(4, 'Password must be at least 4 characters.').max(200).optional(),
+});
+
 const enrollmentUpdateSchema = z.object({
   courseIds: z.array(z.string().min(1)),
 });
@@ -116,6 +123,7 @@ module.exports = {
   lectureUpdateSchema,
   quizUpsertSchema,
   studentCreateSchema,
+  studentUpdateSchema,
   enrollmentUpdateSchema,
   quizSubmitSchema,
   publishScoreSchema,

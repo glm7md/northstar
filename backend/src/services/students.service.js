@@ -47,6 +47,24 @@ async function createStudent({ name, email, password, year }) {
   return toPublicStudent(student);
 }
 
+async function updateStudent(studentId, { email, username, year, password }) {
+  const student = await studentsRepo.findById(studentId);
+  if (!student) throw AppError.notFound('Student not found.');
+
+  for (const identifier of [email, username]) {
+    const existing = await studentsRepo.findByIdentifier(identifier);
+    if (existing && existing.id !== studentId) {
+      throw AppError.conflict('A student with this email/username already exists.');
+    }
+  }
+
+  const patch = { email, username, year };
+  if (password) patch.passwordHash = await hashPassword(password);
+
+  const updated = await studentsRepo.updateById(studentId, patch);
+  return toPublicStudent(updated);
+}
+
 async function deleteStudent(studentId) {
   const removed = await studentsRepo.removeById(studentId);
   if (!removed) throw AppError.notFound('Student not found.');
@@ -67,4 +85,4 @@ async function updateEnrollment(studentId, courseIds) {
   return toPublicStudent(updated);
 }
 
-module.exports = { listStudents, getMe, createStudent, deleteStudent, updateEnrollment, toPublicStudent };
+module.exports = { listStudents, getMe, createStudent, updateStudent, deleteStudent, updateEnrollment, toPublicStudent };

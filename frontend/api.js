@@ -151,6 +151,7 @@
 
         listStudents: () => get('/admin/students').then((r) => r.students),
         createStudent: (data) => post('/admin/students', data).then((r) => r.student),
+        updateStudent: (studentId, data) => put(`/admin/students/${studentId}`, data).then((r) => r.student),
         deleteStudent: (studentId) => del(`/admin/students/${studentId}`),
         updateEnrollment: (studentId, courseIds) =>
             put(`/admin/students/${studentId}/enrollment`, { courseIds }).then((r) => r.student),

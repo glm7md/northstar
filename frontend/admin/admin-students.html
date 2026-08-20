@@ -110,6 +110,7 @@
                     <td><span class="badge free">${esc(student.year || 'N/A')}</span></td>
                     <td>
                       <div class="admin-actions">
+                        <button class="btn-edit" data-action="edit-student" data-student-id="${esc(student.id)}">Edit</button>
                         <button class="btn-edit" data-action="manage-courses" data-student-id="${esc(student.id)}">Manage Courses</button>
                         <button class="btn-delete" data-action="delete-student" data-student-id="${esc(student.id)}">Delete</button>
                       </div>
@@ -161,6 +162,49 @@
         document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
 
+    function showEditStudentForm(studentId) {
+        const student = students.find((item) => item.id === studentId);
+        if (!student) {
+            adminToast('Student account not found.');
+            return;
+        }
+
+        document.getElementById('studentModal')?.remove();
+        const modalHtml = `
+        <div class="modal-backdrop" id="studentModal">
+          <div class="modal">
+            <h2>Edit Student Account</h2>
+            <p>Update the student's sign-in details.</p>
+            <div class="field">
+              <label>Email *</label>
+              <input id="editStudentEmail" type="text" value="${esc(student.email)}" placeholder="Enter email">
+            </div>
+            <div class="field">
+              <label>Username *</label>
+              <input id="editStudentUsername" type="text" value="${esc(student.username)}" placeholder="Enter username">
+            </div>
+            <div class="field">
+              <label>New Password</label>
+              <input id="editStudentPassword" type="password" placeholder="Leave blank to keep the current password">
+            </div>
+            <div class="field">
+              <label>Academic Year *</label>
+              <select id="editStudentYear">
+                ${['First Year', 'Second Year', 'Third Year', 'Fourth Year'].map((year) =>
+                    `<option value="${year}" ${student.year === year ? 'selected' : ''}>${year}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <div class="modal-actions">
+              <button class="outline" data-action="close-student-modal">Cancel</button>
+              <button class="primary" data-action="update-student" data-student-id="${esc(student.id)}">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
     async function saveStudent() {
         const name = document.getElementById('studentName').value.trim();
         const email = document.getElementById('studentEmail').value.trim();
@@ -183,6 +227,33 @@
         await loadStudents();
         renderContent();
         adminToast('Student account created.');
+    }
+
+    async function updateStudent(studentId) {
+        const email = document.getElementById('editStudentEmail').value.trim();
+        const username = document.getElementById('editStudentUsername').value.trim();
+        const password = document.getElementById('editStudentPassword').value;
+        const year = document.getElementById('editStudentYear').value;
+
+        if (!email || !username || !year) {
+            adminToast('Please fill in email, username, and academic year.');
+            return;
+        }
+
+        const data = { email, username, year };
+        if (password) data.password = password;
+
+        try {
+            await NorthstarAPI.Admin.updateStudent(studentId, data);
+        } catch (err) {
+            adminToast(err.message || 'Could not update the student account.');
+            return;
+        }
+
+        document.getElementById('studentModal')?.remove();
+        await loadStudents();
+        renderContent();
+        adminToast('Student account updated.');
     }
 
     async function deleteStudent(studentId) {
@@ -249,10 +320,12 @@
                 window.location.href = '../login.html';
                 break;
             case 'add-student': showAddStudentForm(); break;
+            case 'edit-student': showEditStudentForm(target.dataset.studentId); break;
             case 'manage-courses':
                 window.location.href = `admin-enrollments.html?studentId=${encodeURIComponent(target.dataset.studentId)}`;
                 break;
             case 'save-student': saveStudent(); break;
+            case 'update-student': updateStudent(target.dataset.studentId); break;
             case 'close-student-modal': document.getElementById('studentModal')?.remove(); break;
             case 'delete-student': deleteStudent(target.dataset.studentId); break;
         }

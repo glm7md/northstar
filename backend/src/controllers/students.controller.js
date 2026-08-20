@@ -13,6 +13,11 @@ const createStudent = asyncHandler(async (req, res) => {
   res.status(201).json({ ok: true, student });
 });
 
+const updateStudent = asyncHandler(async (req, res) => {
+  const student = await studentsService.updateStudent(req.params.studentId, req.body);
+  res.json({ ok: true, student });
+});
+
 const deleteStudent = asyncHandler(async (req, res) => {
   await studentsService.deleteStudent(req.params.studentId);
   res.json({ ok: true });
@@ -28,4 +33,4 @@ const me = asyncHandler(async (req, res) => {
   res.json({ ok: true, student });
 });
 
-module.exports = { listStudents, createStudent, deleteStudent, updateEnrollment, me };
+module.exports = { listStudents, createStudent, updateStudent, deleteStudent, updateEnrollment, me };
