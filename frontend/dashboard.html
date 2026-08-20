@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | My Courses</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+    <style>
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="api.js"></script>
+    <script>
+    const app = document.getElementById('app');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    const currentUser = NorthstarAPI.isStudent() ? NorthstarAPI.getCachedUser() : null;
+    const selectedYear = currentUser ? currentUser.year : sessionStorage.getItem('northstar_guest_year');
+
+    if (!currentUser && !selectedYear) {
+        window.location.href = 'index.html';
+    }
+
+    function studentSidebar() {
+        const name = currentUser && currentUser.name ? currentUser.name : 'Guest';
+
+        return `
+        <aside class="sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Navigation</span>
+            <button data-action="close-menu">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button class="nav-link active" data-action="navigate-dashboard">My Courses</button>
+            ${currentUser ? '<button class="nav-link" data-action="navigate-results">My Results</button>' : ''}
+          </nav>
+          <div class="sidebar-bottom">
+            <div class="profile-mini">
+              <div class="avatar">${esc(name.charAt(0).toUpperCase())}</div>
+              <div>
+                <b>${esc(name)}</b>
+                <span>${esc(selectedYear)}</span>
+              </div>
+            </div>
+            <button class="signout" data-action="change-year">Change Year</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function courseCard(course) {
+        const lectureCount = course.lectureCount ?? 0;
+        return `
+        <article class="course-card" data-action="open-course" data-course-id="${esc(course.id)}">
+          <div class="course-card-thumb" style="background-image: url('${esc(course.cover || '')}');">
+            ${course.cover ? '' : '<div class="course-placeholder">📚</div>'}
+          </div>
+          <div class="course-card-info">
+            <h4>${esc(course.title)}</h4>
+            <p>${esc(course.description || 'No description available')}</p>
+          </div>
+          <div class="course-card-footer">
+            <span>${lectureCount} lecture${lectureCount === 1 ? '' : 's'}</span>
+            <span>View Course →</span>
+          </div>
+        </article>
+      `;
+    }
+
+    function studentDashboardContent(courses) {
+        const header = `
+        <header class="topbar">
+          <div>
+            <h1>${esc(selectedYear)} Courses</h1>
+            <p>Available courses for your academic year</p>
+          </div>
+        </header>
+      `;
+
+        if (courses.length === 0) {
+            return `
+          ${header}
+          <section class="empty-state">
+            <div class="empty-icon">☷</div>
+            <h2>No Courses Available</h2>
+            <p>There are no courses for ${esc(selectedYear)} yet. Content is added by the administration.</p>
+          </section>
+        `;
+        }
+
+        return `
+        ${header}
+        <section class="section-head">
+          <div>
+            <h3>All Courses</h3>
+            <p>${courses.length} course${courses.length === 1 ? '' : 's'} available</p>
+          </div>
+        </section>
+        <div class="course-grid">
+          ${courses.map(course => courseCard(course)).join('')}
+        </div>
+      `;
+    }
+
+    async function renderStudentDashboard() {
+        app.innerHTML = `
+        <div class="shell">
+          ${studentSidebar()}
+          <main class="main">
+            <button class="mobile-menu-button" data-action="toggle-menu">☰ Menu</button>
+            <div id="content"><div class="loading-state">Loading courses…</div></div>
+          </main>
+        </div>
+      `;
+
+        try {
+            const courses = await NorthstarAPI.Courses.listByYear(selectedYear);
+            document.getElementById('content').innerHTML = studentDashboardContent(courses);
+        } catch (err) {
+            document.getElementById('content').innerHTML = `<section class="empty-state"><h2>Couldn't load courses</h2><p>${esc(err.message)}</p></section>`;
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+
+        if (!target) {
+            const openSidebar = document.querySelector('.sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-menu': document.querySelector('.sidebar')?.classList.toggle('open'); break;
+            case 'close-menu': document.querySelector('.sidebar')?.classList.remove('open'); break;
+            case 'navigate-dashboard': renderStudentDashboard(); break;
+            case 'navigate-results': window.location.href = 'my-results.html'; break;
+            case 'change-year':
+                NorthstarAPI.clearSession();
+                sessionStorage.removeItem('northstar_guest_year');
+                sessionStorage.removeItem('northstar_selected_year');
+                window.location.href = 'index.html';
+                break;
+            case 'open-course': window.location.href = `course-details.html?courseId=${encodeURIComponent(target.dataset.courseId)}`; break;
+        }
+    });
+
+    if (currentUser || selectedYear) renderStudentDashboard();
+    </script>
+</body>
+</html>

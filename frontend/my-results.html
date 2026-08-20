@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | My Results</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="app"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="api.js"></script>
+    <script>
+    const app = document.getElementById('app');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function studentSidebar(name) {
+        return `
+        <aside class="sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Navigation</span>
+            <button data-action="close-menu">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button class="nav-link" data-action="navigate-dashboard">My Courses</button>
+            <button class="nav-link active" data-action="navigate-results">My Results</button>
+          </nav>
+          <div class="sidebar-bottom">
+            <div class="profile-mini">
+              <div class="avatar">${esc(name.charAt(0).toUpperCase())}</div>
+              <div>
+                <b>${esc(name)}</b>
+              </div>
+            </div>
+            <button class="signout" data-action="change-year">Change Year</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function resultRow(attempt, courseTitlesById) {
+        const info = courseTitlesById[attempt.courseId] || { courseTitle: 'Unknown Course', lectureTitle: 'Unknown Lecture' };
+        const lecture = (info.lectures || []).find(l => l.id === attempt.lectureId);
+        const totalPoints = attempt.mcqTotal + attempt.essayTotal;
+
+        return `
+        <tr>
+          <td><strong>${esc(info.title || 'Unknown Course')}</strong></td>
+          <td>${esc(lecture ? lecture.title : 'Unknown Lecture')}</td>
+          <td>${attempt.mcqScore} / ${attempt.mcqTotal}</td>
+          <td>${attempt.approved ? `${attempt.finalScore} / ${totalPoints}` : '—'}</td>
+          <td><span class="status-pill ${attempt.approved ? 'approved' : 'pending'}">${attempt.approved ? 'Published' : 'Pending Review'}</span></td>
+          <td>${new Date(attempt.submittedAt).toLocaleDateString()}</td>
+        </tr>
+      `;
+    }
+
+    function renderContent(attempts, courseTitlesById) {
+        return `
+        <header class="topbar">
+          <div>
+            <h1>My Results</h1>
+            <p>All of your quiz attempts and grades</p>
+          </div>
+        </header>
+        ${attempts.length === 0 ? `
+          <section class="empty-state">
+            <div class="empty-icon">📝</div>
+            <h2>No Quiz Attempts Yet</h2>
+            <p>Complete a lecture quiz to see your results here.</p>
+          </section>
+        ` : `
+          <section class="admin-panel">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Course</th>
+                  <th>Lecture</th>
+                  <th>Multiple Choice</th>
+                  <th>Final Score</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${attempts.map(a => resultRow(a, courseTitlesById)).join('')}
+              </tbody>
+            </table>
+          </section>
+        `}
+      `;
+    }
+
+    async function render() {
+        const user = NorthstarAPI.getCachedUser();
+        app.innerHTML = `
+        <div class="shell">
+          ${studentSidebar(user && user.name ? user.name : 'Student')}
+          <main class="main">
+            <button class="mobile-menu-button" data-action="toggle-menu">☰ Menu</button>
+            <div id="content"><div class="loading-state">Loading results…</div></div>
+          </main>
+        </div>
+      `;
+
+        const contentEl = document.getElementById('content');
+        try {
+            const attempts = await NorthstarAPI.Quiz.myAttempts();
+            const uniqueCourseIds = [...new Set(attempts.map(a => a.courseId))];
+            const courses = await Promise.all(uniqueCourseIds.map(id => NorthstarAPI.Courses.get(id).catch(() => null)));
+            const courseTitlesById = {};
+            uniqueCourseIds.forEach((id, i) => { if (courses[i]) courseTitlesById[id] = courses[i]; });
+            contentEl.innerHTML = renderContent(attempts, courseTitlesById);
+        } catch (err) {
+            contentEl.innerHTML = `<section class="empty-state"><h2>Couldn't load results</h2><p>${esc(err.message)}</p></section>`;
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) {
+            const openSidebar = document.querySelector('.sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        switch (target.dataset.action) {
+            case 'toggle-menu': document.querySelector('.sidebar')?.classList.toggle('open'); break;
+            case 'close-menu': document.querySelector('.sidebar')?.classList.remove('open'); break;
+            case 'navigate-dashboard': window.location.href = 'dashboard.html'; break;
+            case 'navigate-results': break;
+            case 'change-year':
+                NorthstarAPI.clearSession();
+                sessionStorage.removeItem('northstar_guest_year');
+                sessionStorage.removeItem('northstar_selected_year');
+                window.location.href = 'index.html';
+                break;
+        }
+    });
+
+    if (NorthstarAPI.requireStudent()) render();
+    </script>
+</body>
+</html>

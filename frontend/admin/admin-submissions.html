@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Quiz Submissions</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+    <div id="adminApp"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="../api.js"></script>
+    <script>
+    const adminApp = document.getElementById('adminApp');
+    const params = new URLSearchParams(window.location.search);
+    const courseId = params.get('courseId');
+    const lectureId = params.get('lectureId');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function adminToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    let course = null;
+    let lecture = null;
+    let quiz = null;
+    let attempts = [];
+    let studentsById = {};
+    let loadError = null;
+
+    function adminSidebar() {
+        return `
+        <aside class="admin-sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Menu</span>
+            <button type="button" data-action="close-sidebar">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button type="button" class="admin-nav-link active" data-action="navigate-courses">
+              Courses Management
+            </button>
+            <button type="button" class="admin-nav-link" data-action="navigate-students">
+              Student Accounts
+            </button>
+            <button type="button" class="admin-nav-link" data-action="navigate-grades">
+              Grades
+            </button>
+          </nav>
+          <div class="admin-sidebar-bottom">
+            <div class="admin-profile">
+              <div class="avatar">SA</div>
+              <div>
+                <b>System Admin</b>
+                <span>Administrator</span>
+              </div>
+            </div>
+            <button type="button" class="admin-signout" data-action="logout">Sign Out</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function submissionCard(attempt) {
+        const student = studentsById[attempt.studentId];
+        const totalPoints = quiz.questions.length;
+        const essayQuestions = quiz.questions.filter(q => q.type === 'essay');
+
+        return `
+        <div class="submission-card">
+          <div class="submission-head">
+            <div>
+              <b>${esc(student ? student.name : 'Unknown Student')}</b>
+              <div class="submission-meta">${esc(student ? (student.email || student.username || '') : '')} · Submitted ${new Date(attempt.submittedAt).toLocaleString()}</div>
+            </div>
+            <span class="status-pill ${attempt.approved ? 'approved' : 'pending'}">${attempt.approved ? 'Published' : 'Pending Review'}</span>
+          </div>
+          <div class="submission-mcq">Multiple Choice Score: <strong>${attempt.mcqScore} / ${attempt.mcqTotal}</strong></div>
+          ${essayQuestions.map((q, i) => {
+              const answer = attempt.answers.find(a => a.questionId === q.id);
+              return `
+              <div class="submission-essay-item">
+                <h4>Essay Question ${i + 1}</h4>
+                <img src="${esc(q.imageUrl)}" class="qb-image-preview">
+                <div class="essay-answer-box">
+                  ${answer && answer.method === 'text' && answer.text ? `<p>${esc(answer.text)}</p>` : ''}
+                  ${answer && answer.method === 'image' && answer.imageUrl ? `<img src="${esc(answer.imageUrl)}" alt="Student answer">` : ''}
+                  ${!answer || (!answer.text && !answer.imageUrl) ? `<p style="color:var(--muted);">No answer submitted.</p>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+          <div class="submission-score-row">
+            <div class="field">
+              <label>Final Score (out of ${totalPoints})</label>
+              <input type="number" min="0" max="${totalPoints}" class="final-score-input" data-attempt-id="${esc(attempt.id)}" value="${attempt.finalScore !== null && attempt.finalScore !== undefined ? attempt.finalScore : ''}" placeholder="Enter final score">
+            </div>
+            <button type="button" class="primary" data-action="publish-score" data-attempt-id="${esc(attempt.id)}">Publish to Student</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderContent() {
+        if (!course || !lecture) {
+            return `
+            <div class="empty-state-admin">
+              <div class="empty-icon">📚</div>
+              <h3>Lecture Not Found</h3>
+              <button class="back-button" data-action="back-to-lectures">← Back</button>
+            </div>
+          `;
+        }
+
+        if (!quiz) {
+            return `
+            <div class="empty-state-admin">
+              <div class="empty-icon">📝</div>
+              <h3>No Quiz Attached</h3>
+              <p>This lecture does not have a quiz yet.</p>
+              <button class="back-button" data-action="back-to-lectures">← Back to Lectures</button>
+            </div>
+          `;
+        }
+
+        return `
+        <header class="admin-topbar">
+          <div>
+            <button type="button" class="back-button" data-action="back-to-lectures">← Back to Lectures</button>
+            <h1>Quiz Submissions</h1>
+            <p>${esc(course.title)} — ${esc(lecture.title)}</p>
+          </div>
+        </header>
+        <section class="admin-panel">
+          ${attempts.length === 0 ? `
+            <div class="empty-state-admin">
+              <div class="empty-icon">🗂️</div>
+              <h3>No Submissions Yet</h3>
+              <p>No students have submitted this quiz yet.</p>
+            </div>
+          ` : attempts.map(a => submissionCard(a)).join('')}
+        </section>
+      `;
+    }
+
+    function render() {
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button type="button" class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent">${renderContent()}</div>
+          </main>
+        </div>
+      `;
+    }
+
+    async function publishScore(attemptId) {
+        const input = document.querySelector(`.final-score-input[data-attempt-id="${attemptId}"]`);
+        if (!input) return;
+        const value = Number(input.value);
+        const totalPoints = quiz.questions.length;
+
+        if (input.value === '' || Number.isNaN(value) || value < 0 || value > totalPoints) {
+            adminToast(`Enter a score between 0 and ${totalPoints}.`);
+            return;
+        }
+
+        try {
+            const updated = await NorthstarAPI.Admin.publishScore(attemptId, value);
+            const idx = attempts.findIndex(a => a.id === attemptId);
+            if (idx !== -1) attempts[idx] = updated;
+            adminToast('Score published to student.');
+            render();
+        } catch (err) {
+            adminToast(err.message || 'Could not publish the score.');
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) {
+            const openSidebar = document.querySelector('.admin-sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-sidebar': document.querySelector('.admin-sidebar')?.classList.toggle('open'); break;
+            case 'close-sidebar': document.querySelector('.admin-sidebar')?.classList.remove('open'); break;
+            case 'navigate-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'navigate-students': window.location.href = 'admin-students.html'; break;
+            case 'navigate-grades': window.location.href = 'admin-grades.html'; break;
+            case 'logout':
+                NorthstarAPI.clearSession();
+                window.location.href = '../login.html';
+                break;
+            case 'back-to-lectures':
+                window.location.href = `admin-lectures.html?courseId=${encodeURIComponent(courseId || '')}`;
+                break;
+            case 'publish-score': publishScore(target.dataset.attemptId); break;
+        }
+    });
+
+    async function init() {
+        if (!NorthstarAPI.requireAdmin()) return;
+
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button type="button" class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent"><div class="loading-state">Loading submissions…</div></div>
+          </main>
+        </div>
+      `;
+
+        try {
+            const [courseData, attemptsData, students] = await Promise.all([
+                NorthstarAPI.Admin.getCourse(courseId),
+                NorthstarAPI.Admin.listAttempts(courseId, lectureId).catch(() => null),
+                NorthstarAPI.Admin.listStudents()
+            ]);
+            course = courseData;
+            lecture = (course.lectures || []).find(l => l.id === lectureId) || null;
+            quiz = attemptsData ? attemptsData.quiz : null;
+            attempts = attemptsData ? attemptsData.attempts : [];
+            studentsById = Object.fromEntries(students.map(s => [s.id, s]));
+        } catch (err) {
+            course = null;
+        }
+
+        render();
+    }
+
+    init();
+    </script>
+</body>
+</html>

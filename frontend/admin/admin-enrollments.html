@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Manage Enrollment</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+    <div id="adminApp"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="../api.js"></script>
+    <script>
+    const adminApp = document.getElementById('adminApp');
+    const studentId = new URLSearchParams(window.location.search).get('studentId');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function adminToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    let student = null;
+    let courses = [];
+
+    function adminSidebar() {
+        return `
+        <aside class="admin-sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Menu</span>
+            <button data-action="close-sidebar">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button class="admin-nav-link" data-action="navigate-courses">
+              Courses Management
+            </button>
+            <button class="admin-nav-link active" data-action="navigate-students">
+              Student Accounts
+            </button>
+            <button class="admin-nav-link" data-action="navigate-grades">
+              Grades
+            </button>
+          </nav>
+          <div class="admin-sidebar-bottom">
+            <div class="admin-profile">
+              <div class="avatar">SA</div>
+              <div>
+                <b>System Admin</b>
+                <span>Administrator</span>
+              </div>
+            </div>
+            <button class="admin-signout" data-action="logout">Sign Out</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function renderContent() {
+        if (!student) {
+            return `
+            <div class="empty-state-admin">
+              <div class="empty-icon">👤</div>
+              <h3>Student Not Found</h3>
+              <button class="back-button" data-action="back-to-students">← Back to Students</button>
+            </div>
+          `;
+        }
+
+        return `
+        <header class="admin-topbar">
+          <div>
+            <button class="back-button" data-action="back-to-students">← Back to Students</button>
+            <h1>Manage Enrollment</h1>
+            <p>${esc(student.name)} — choose which courses this student can access</p>
+          </div>
+        </header>
+        <section class="admin-panel">
+          ${courses.length === 0 ? `
+            <div class="empty-state-admin">
+              <div class="empty-icon">📚</div>
+              <h3>No Courses Yet</h3>
+              <p>Create a course first before managing enrollment.</p>
+            </div>
+          ` : `
+            <div id="enrollmentList">
+              ${courses.map(course => `
+                <div class="enrollment-row">
+                  <div class="enrollment-row-left">
+                    <b>${esc(course.title)}</b>
+                    <span>${esc(course.description || 'No description')}</span>
+                  </div>
+                  <label class="enrollment-toggle">
+                    <input type="checkbox" data-course-id="${esc(course.id)}" ${(student.enrolledCourseIds || []).includes(course.id) ? 'checked' : ''}>
+                    Enrolled
+                  </label>
+                </div>
+              `).join('')}
+            </div>
+            <div class="form-actions">
+              <button class="outline" data-action="back-to-students">Cancel</button>
+              <button class="primary" data-action="save-enrollment">Save Changes</button>
+            </div>
+          `}
+        </section>
+      `;
+    }
+
+    async function saveEnrollment() {
+        const checkboxes = document.querySelectorAll('#enrollmentList input[type="checkbox"]');
+        const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.dataset.courseId);
+        try {
+            const updated = await NorthstarAPI.Admin.updateEnrollment(studentId, selected);
+            student = updated;
+            adminToast('Enrollment updated.');
+        } catch (err) {
+            adminToast(err.message || 'Could not save enrollment.');
+        }
+    }
+
+    function render() {
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent">${renderContent()}</div>
+          </main>
+        </div>
+      `;
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) {
+            const openSidebar = document.querySelector('.admin-sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        switch (target.dataset.action) {
+            case 'toggle-sidebar': document.querySelector('.admin-sidebar')?.classList.toggle('open'); break;
+            case 'close-sidebar': document.querySelector('.admin-sidebar')?.classList.remove('open'); break;
+            case 'navigate-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'navigate-students': window.location.href = 'admin-students.html'; break;
+            case 'navigate-grades': window.location.href = 'admin-grades.html'; break;
+            case 'logout':
+                NorthstarAPI.clearSession();
+                window.location.href = '../login.html';
+                break;
+            case 'back-to-students': window.location.href = 'admin-students.html'; break;
+            case 'save-enrollment': saveEnrollment(); break;
+        }
+    });
+
+    async function init() {
+        if (!NorthstarAPI.requireAdmin()) return;
+
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent"><div class="loading-state">Loading…</div></div>
+          </main>
+        </div>
+      `;
+
+        try {
+            const [students, allCourses] = await Promise.all([
+                NorthstarAPI.Admin.listStudents(),
+                NorthstarAPI.Admin.listCourses()
+            ]);
+            student = students.find(s => s.id === studentId) || null;
+            courses = allCourses;
+        } catch (err) {
+            adminToast(err.message || 'Could not load enrollment data.');
+        }
+
+        render();
+    }
+
+    init();
+    </script>
+</body>
+</html>

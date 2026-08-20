@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Sign In</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        body { padding: 64px 20px 40px; }
+        #app { display: flex; justify-content: center; }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="api.js"></script>
+    <script>
+    const app = document.getElementById('app');
+
+    function renderSignIn() {
+        app.innerHTML = `
+        <div class="modal">
+          <h2>Sign In</h2>
+          <p>Login with your account.</p>
+          <div class="field">
+            <label>Email or Username</label>
+            <input id="signInEmail" type="text" placeholder="Enter your email or username">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input id="signInPassword" type="password" placeholder="Enter your password">
+          </div>
+          <div class="login-error" id="signInError"></div>
+          <div class="modal-actions">
+            <button class="outline" data-action="back-to-home">Cancel</button>
+            <button class="primary" data-action="submit-signin" id="signInSubmit">Sign In</button>
+          </div>
+        </div>
+      `;
+
+        document.getElementById('signInPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleUnifiedSignIn();
+        });
+    }
+
+    async function handleUnifiedSignIn() {
+        const email = document.getElementById('signInEmail').value.trim();
+        const password = document.getElementById('signInPassword').value;
+        const errorEl = document.getElementById('signInError');
+        const submitBtn = document.getElementById('signInSubmit');
+
+        errorEl.textContent = '';
+
+        if (!email || !password) {
+            errorEl.textContent = 'Please enter both email/username and password.';
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing in...';
+
+        try {
+            const user = await NorthstarAPI.login(email, password);
+            if (user.role === 'admin') {
+                window.location.href = 'admin/admin-dashboard.html';
+            } else {
+                window.location.href = 'dashboard.html';
+            }
+        } catch (err) {
+            errorEl.textContent = err.message || 'Invalid credentials. Please try again.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Sign In';
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'back-to-home': window.location.href = 'index.html'; break;
+            case 'submit-signin': handleUnifiedSignIn(); break;
+        }
+    });
+
+    renderSignIn();
+    </script>
+</body>
+</html>

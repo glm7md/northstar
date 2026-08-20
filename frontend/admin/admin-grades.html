@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Grades</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+    <div id="adminApp"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="../api.js"></script>
+    <script>
+    const adminApp = document.getElementById('adminApp');
+    const YEARS = ['First Year', 'Second Year', 'Third Year', 'Fourth Year'];
+    let selectedYear = YEARS[0];
+    let students = [];
+    let loading = true;
+    let expandedStudentId = null;
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function adminToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    function adminSidebar() {
+        return `
+        <aside class="admin-sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Menu</span>
+            <button data-action="close-sidebar">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button class="admin-nav-link" data-action="navigate-courses">
+              Courses Management
+            </button>
+            <button class="admin-nav-link" data-action="navigate-students">
+              Student Accounts
+            </button>
+            <button class="admin-nav-link active" data-action="navigate-grades">
+              Grades
+            </button>
+          </nav>
+          <div class="admin-sidebar-bottom">
+            <div class="admin-profile">
+              <div class="avatar">SA</div>
+              <div>
+                <b>System Admin</b>
+                <span>Administrator</span>
+              </div>
+            </div>
+            <button class="admin-signout" data-action="logout">Sign Out</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function formatScore(attempt) {
+        if (attempt.finalScore !== null && attempt.finalScore !== undefined) {
+            return `${attempt.finalScore} <span style="opacity:.6">(final)</span>`;
+        }
+        if (attempt.essayTotal > 0) {
+            return `${attempt.mcqScore}/${attempt.mcqTotal} MCQ <span style="opacity:.6">+ ${attempt.essayTotal} essay pending review</span>`;
+        }
+        return `${attempt.mcqScore}/${attempt.mcqTotal}`;
+    }
+
+    function studentGradeRows(student) {
+        if (student.courses.length === 0) {
+            return `<tr><td colspan="2" class="muted">No quiz attempts yet.</td></tr>`;
+        }
+        return student.courses.map((course) => `
+          <tr>
+            <td colspan="2"><strong>${esc(course.courseTitle)}</strong></td>
+          </tr>
+          ${course.lectures.map((lecture) => `
+            <tr>
+              <td style="padding-inline-start:24px;">${esc(lecture.lectureTitle)}</td>
+              <td>${formatScore(lecture)}</td>
+            </tr>
+          `).join('')}
+        `).join('');
+    }
+
+    function adminGradesPage() {
+        const yearOptions = YEARS.map((y) => `<option value="${esc(y)}" ${y === selectedYear ? 'selected' : ''}>${esc(y)}</option>`).join('');
+
+        let body;
+        if (loading) {
+            body = `<div class="loading-state">Loading grades…</div>`;
+        } else if (students.length === 0) {
+            body = `
+            <div class="empty-state-admin">
+              <div class="empty-icon">☷</div>
+              <h3>No Students in ${esc(selectedYear)}</h3>
+              <p>No student accounts are set to this academic year yet.</p>
+            </div>
+          `;
+        } else {
+            body = `
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Email</th>
+                  <th>Attempts</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${students.map((student) => `
+                  <tr>
+                    <td><strong>${esc(student.name)}</strong></td>
+                    <td>${esc(student.email)}</td>
+                    <td>${student.courses.reduce((n, c) => n + c.lectures.length, 0)}</td>
+                    <td>
+                      <button class="btn-edit" data-action="toggle-student" data-student-id="${esc(student.id)}">
+                        ${expandedStudentId === student.id ? 'Hide' : 'View Grades'}
+                      </button>
+                    </td>
+                  </tr>
+                  ${expandedStudentId === student.id ? `
+                    <tr>
+                      <td colspan="4" style="background:var(--surface-2, #f7f7fa);">
+                        <table class="admin-table" style="margin:0;">
+                          <thead>
+                            <tr><th>Course / Lecture</th><th>Score</th></tr>
+                          </thead>
+                          <tbody>
+                            ${studentGradeRows(student)}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  ` : ''}
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+        }
+
+        return `
+        <header class="admin-topbar">
+          <div>
+            <h1>Grades</h1>
+            <p>Pick a year to see its students and their quiz scores</p>
+          </div>
+          <div class="field" style="min-width:220px;">
+            <label>Academic Year</label>
+            <select id="yearSelect">${yearOptions}</select>
+          </div>
+        </header>
+        <section class="admin-panel">
+          <div class="admin-panel-header">
+            <div>
+              <h3>${esc(selectedYear)}</h3>
+              <p>${students.length} student(s)</p>
+            </div>
+          </div>
+          ${body}
+        </section>
+      `;
+    }
+
+    function renderContent() {
+        const content = document.getElementById('adminContent');
+        if (content) content.innerHTML = adminGradesPage();
+        document.getElementById('yearSelect')?.addEventListener('change', (e) => {
+            selectedYear = e.target.value;
+            expandedStudentId = null;
+            loadGrades();
+        });
+    }
+
+    async function loadGrades() {
+        loading = true;
+        renderContent();
+        try {
+            students = await NorthstarAPI.Admin.gradesByYear(selectedYear);
+        } catch (err) {
+            adminToast(err.message || 'Could not load grades.');
+            students = [];
+        }
+        loading = false;
+        renderContent();
+    }
+
+    async function renderAdminPanel() {
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent"><div class="loading-state">Loading grades…</div></div>
+          </main>
+        </div>
+      `;
+        await loadGrades();
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+
+        if (!target) {
+            const openSidebar = document.querySelector('.admin-sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-sidebar': document.querySelector('.admin-sidebar')?.classList.toggle('open'); break;
+            case 'close-sidebar': document.querySelector('.admin-sidebar')?.classList.remove('open'); break;
+            case 'navigate-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'navigate-students': window.location.href = 'admin-students.html'; break;
+            case 'navigate-grades': break;
+            case 'logout':
+                NorthstarAPI.clearSession();
+                window.location.href = '../login.html';
+                break;
+            case 'toggle-student':
+                expandedStudentId = expandedStudentId === target.dataset.studentId ? null : target.dataset.studentId;
+                renderContent();
+                break;
+        }
+    });
+
+    if (NorthstarAPI.requireAdmin()) renderAdminPanel();
+    </script>
+</body>
+</html>

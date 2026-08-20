@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Student Accounts</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+    <div id="adminApp"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="../api.js"></script>
+    <script>
+    const adminApp = document.getElementById('adminApp');
+    let students = [];
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function adminToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    function adminSidebar() {
+        return `
+        <aside class="admin-sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Menu</span>
+            <button data-action="close-sidebar">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button class="admin-nav-link" data-action="navigate-courses">
+              Courses Management
+            </button>
+            <button class="admin-nav-link active" data-action="navigate-students">
+              Student Accounts
+            </button>
+            <button class="admin-nav-link" data-action="navigate-grades">
+              Grades
+            </button>
+          </nav>
+          <div class="admin-sidebar-bottom">
+            <div class="admin-profile">
+              <div class="avatar">SA</div>
+              <div>
+                <b>System Admin</b>
+                <span>Administrator</span>
+              </div>
+            </div>
+            <button class="admin-signout" data-action="logout">Sign Out</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function adminStudentsPage() {
+        return `
+        <header class="admin-topbar">
+          <div>
+            <h1>Student Accounts</h1>
+            <p>Manage student access credentials</p>
+          </div>
+        </header>
+        <section class="admin-panel">
+          <div class="admin-panel-header">
+            <div>
+              <h3>All Students</h3>
+              <p>${students.length} student account(s)</p>
+            </div>
+            <button class="secondary add-student-btn" data-action="add-student">+ Add Student</button>
+          </div>
+          ${students.length === 0 ? `
+            <div class="empty-state-admin">
+              <div class="empty-icon">☷</div>
+              <h3>No Student Accounts</h3>
+              <p>Create student accounts to allow them to access premium content.</p>
+            </div>
+          ` : `
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email/Username</th>
+                  <th>Year</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${students.map(student => `
+                  <tr>
+                    <td><strong>${esc(student.name)}</strong></td>
+                    <td>${esc(student.email || student.username)}</td>
+                    <td><span class="badge free">${esc(student.year || 'N/A')}</span></td>
+                    <td>
+                      <div class="admin-actions">
+                        <button class="btn-edit" data-action="manage-courses" data-student-id="${esc(student.id)}">Manage Courses</button>
+                        <button class="btn-delete" data-action="delete-student" data-student-id="${esc(student.id)}">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </section>
+      `;
+    }
+
+    function showAddStudentForm() {
+        document.getElementById('studentModal')?.remove();
+        const modalHtml = `
+        <div class="modal-backdrop" id="studentModal">
+          <div class="modal">
+            <h2>Add Student Account</h2>
+            <p>Create credentials for a new student.</p>
+            <div class="field">
+              <label>Full Name *</label>
+              <input id="studentName" type="text" placeholder="Enter full name">
+            </div>
+            <div class="field">
+              <label>Email or Username *</label>
+              <input id="studentEmail" type="text" placeholder="Enter email or username">
+            </div>
+            <div class="field">
+              <label>Password *</label>
+              <input id="studentPassword" type="password" placeholder="Enter password">
+            </div>
+            <div class="field">
+              <label>Academic Year</label>
+              <select id="studentYear">
+                <option>First Year</option>
+                <option>Second Year</option>
+                <option>Third Year</option>
+                <option>Fourth Year</option>
+              </select>
+            </div>
+            <div class="modal-actions">
+              <button class="outline" data-action="close-student-modal">Cancel</button>
+              <button class="primary" data-action="save-student">Create Student</button>
+            </div>
+          </div>
+        </div>
+      `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    async function saveStudent() {
+        const name = document.getElementById('studentName').value.trim();
+        const email = document.getElementById('studentEmail').value.trim();
+        const password = document.getElementById('studentPassword').value;
+        const year = document.getElementById('studentYear').value;
+
+        if (!name || !email || !password) {
+            adminToast('Please fill in all required fields.');
+            return;
+        }
+
+        try {
+            await NorthstarAPI.Admin.createStudent({ name, email, password, year });
+        } catch (err) {
+            adminToast(err.message || 'Could not create the student account.');
+            return;
+        }
+
+        document.getElementById('studentModal')?.remove();
+        await loadStudents();
+        renderContent();
+        adminToast('Student account created.');
+    }
+
+    async function deleteStudent(studentId) {
+        if (!confirm('Are you sure you want to delete this student account?')) return;
+        try {
+            await NorthstarAPI.Admin.deleteStudent(studentId);
+            adminToast('Student account deleted.');
+        } catch (err) {
+            adminToast(err.message || 'Could not delete the student account.');
+        }
+        await loadStudents();
+        renderContent();
+    }
+
+    function renderContent() {
+        const content = document.getElementById('adminContent');
+        if (content) content.innerHTML = adminStudentsPage();
+    }
+
+    async function loadStudents() {
+        try {
+            students = await NorthstarAPI.Admin.listStudents();
+        } catch (err) {
+            adminToast(err.message || 'Could not load students.');
+            students = [];
+        }
+    }
+
+    async function renderAdminPanel() {
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent"><div class="loading-state">Loading students…</div></div>
+          </main>
+        </div>
+      `;
+        await loadStudents();
+        renderContent();
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+
+        if (!target) {
+            const openSidebar = document.querySelector('.admin-sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-sidebar': document.querySelector('.admin-sidebar')?.classList.toggle('open'); break;
+            case 'close-sidebar': document.querySelector('.admin-sidebar')?.classList.remove('open'); break;
+            case 'navigate-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'navigate-students': break;
+            case 'navigate-grades': window.location.href = 'admin-grades.html'; break;
+            case 'logout':
+                NorthstarAPI.clearSession();
+                window.location.href = '../login.html';
+                break;
+            case 'add-student': showAddStudentForm(); break;
+            case 'manage-courses':
+                window.location.href = `admin-enrollments.html?studentId=${encodeURIComponent(target.dataset.studentId)}`;
+                break;
+            case 'save-student': saveStudent(); break;
+            case 'close-student-modal': document.getElementById('studentModal')?.remove(); break;
+            case 'delete-student': deleteStudent(target.dataset.studentId); break;
+        }
+    });
+
+    if (NorthstarAPI.requireAdmin()) renderAdminPanel();
+    </script>
+</body>
+</html>

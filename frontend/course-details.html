@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Course Details</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="app"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="api.js"></script>
+    <script>
+    const app = document.getElementById('app');
+    const courseId = new URLSearchParams(window.location.search).get('courseId');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function showToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    function getSidebarName() {
+        const user = NorthstarAPI.isStudent() ? NorthstarAPI.getCachedUser() : null;
+        if (user && user.name) return user.name;
+        return 'Student';
+    }
+
+    function studentSidebar(name) {
+        return `
+        <aside class="sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Navigation</span>
+            <button data-action="close-menu">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button class="nav-link active" data-action="navigate-dashboard">My Courses</button>
+            <button class="nav-link" data-action="navigate-results">My Results</button>
+          </nav>
+          <div class="sidebar-bottom">
+            <div class="profile-mini">
+              <div class="avatar">${esc(name.charAt(0).toUpperCase())}</div>
+              <div>
+                <b>${esc(name)}</b>
+              </div>
+            </div>
+            <button class="signout" data-action="change-year">Change Year</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function lectureItem(lecture, courseId) {
+        const isLocked = !lecture.unlocked;
+        const action = isLocked
+            ? (lecture.reason === 'login' ? 'open-login' : lecture.reason === 'not-enrolled' ? 'not-enrolled' : 'quiz-locked')
+            : 'open-lecture';
+        const metaText = lecture.order === 0 ? '🔓 Free'
+            : isLocked && lecture.reason === 'login' ? '🔒 Login Required'
+                : isLocked && lecture.reason === 'not-enrolled' ? '🔒 Not Enrolled'
+                    : isLocked && lecture.reason === 'quiz' ? '🔒 Complete previous quiz to unlock'
+                        : '🔓 Unlocked';
+
+        return `
+        <div class="lecture-item ${isLocked ? 'locked' : ''}" data-action="${action}" data-course-id="${esc(courseId)}" data-lecture-id="${esc(lecture.id)}">
+          <div class="lecture-item-left">
+            <span class="lecture-number">${lecture.order + 1}</span>
+            <div>
+              <div class="lecture-title">${esc(lecture.title)}</div>
+              <div class="lecture-meta">${metaText}</div>
+            </div>
+          </div>
+          <div class="lecture-item-right">
+            ${isLocked ? '<span class="lock-icon">🔒</span>' : '<span class="play-icon">▶</span>'}
+          </div>
+        </div>
+      `;
+    }
+
+    function courseDetailContent(course) {
+        if (!course) {
+            return `
+            <div class="empty-state">
+              <div class="empty-icon">📚</div>
+              <h2>Course Not Found</h2>
+              <button class="back-button" data-action="back-to-dashboard">← Back to courses</button>
+            </div>
+          `;
+        }
+
+        const lectures = course.lectures || [];
+
+        return `
+        <div class="course-detail">
+          <button class="back-button" data-action="back-to-dashboard">← Back to courses</button>
+          ${course.cover ? `<div class="course-cover-wrapper"><img src="${esc(course.cover)}" alt="${esc(course.title)}" class="course-cover"></div>` : ''}
+          <h1 class="course-detail-title">${esc(course.title)}</h1>
+          <p class="course-detail-description">${esc(course.description || 'No description provided')}</p>
+          <div class="lectures-section">
+            <h3>Course Lectures</h3>
+            ${lectures.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-icon">📹</div>
+                <h2>No Lectures</h2>
+                <p>This course has no lectures yet.</p>
+              </div>
+            ` : `
+              <div class="lectures-list">
+                ${lectures.map((lecture) => lectureItem(lecture, courseId)).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    async function render() {
+        const name = getSidebarName();
+
+        app.innerHTML = `
+        <div class="shell">
+          ${studentSidebar(name)}
+          <main class="main">
+            <button class="mobile-menu-button" data-action="toggle-menu">☰ Menu</button>
+            <div id="content"><div class="loading-state">Loading course…</div></div>
+          </main>
+        </div>
+      `;
+
+        try {
+            const course = await NorthstarAPI.Courses.get(courseId);
+            document.getElementById('content').innerHTML = courseDetailContent(course);
+        } catch (err) {
+            document.getElementById('content').innerHTML = courseDetailContent(null);
+        }
+    }
+
+    function openLoginModal(courseId, lectureId) {
+        document.getElementById('loginModal')?.remove();
+        const modalHtml = `
+        <div class="modal-backdrop" id="loginModal">
+          <div class="modal">
+            <h2>Student Login</h2>
+            <p>Login to access premium lectures and unlock all content.</p>
+            <div class="field">
+              <label>Email or Username</label>
+              <input id="loginEmail" type="text" placeholder="Enter your email or username">
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <input id="loginPassword" type="password" placeholder="Enter your password">
+            </div>
+            <div class="login-error" id="loginError"></div>
+            <div class="modal-actions">
+              <button class="outline" data-action="close-login-modal">Cancel</button>
+              <button class="primary" data-action="submit-login" data-course-id="${esc(courseId || '')}" data-lecture-id="${esc(lectureId || '')}">Login</button>
+            </div>
+          </div>
+        </div>
+      `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleStudentLogin(courseId || null, lectureId || null);
+        });
+    }
+
+    async function handleStudentLogin(courseId, lectureId) {
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        const errorEl = document.getElementById('loginError');
+
+        if (!email || !password) {
+            errorEl.textContent = 'Please enter both email/username and password.';
+            return;
+        }
+
+        try {
+            await NorthstarAPI.login(email, password);
+        } catch (err) {
+            errorEl.textContent = err.message || 'Invalid credentials. Please try again.';
+            return;
+        }
+
+        document.getElementById('loginModal')?.remove();
+
+        if (courseId && lectureId) {
+            window.location.href = `lecture-view.html?courseId=${encodeURIComponent(courseId)}&lectureId=${encodeURIComponent(lectureId)}`;
+        } else {
+            render();
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) {
+            const openSidebar = document.querySelector('.sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-menu': document.querySelector('.sidebar')?.classList.toggle('open'); break;
+            case 'close-menu': document.querySelector('.sidebar')?.classList.remove('open'); break;
+            case 'navigate-dashboard': window.location.href = 'dashboard.html'; break;
+            case 'navigate-results': window.location.href = 'my-results.html'; break;
+            case 'change-year':
+                NorthstarAPI.clearSession();
+                sessionStorage.removeItem('northstar_guest_year');
+                sessionStorage.removeItem('northstar_selected_year');
+                window.location.href = 'index.html';
+                break;
+            case 'back-to-dashboard': window.location.href = 'dashboard.html'; break;
+            case 'open-lecture':
+                window.location.href = `lecture-view.html?courseId=${encodeURIComponent(target.dataset.courseId)}&lectureId=${encodeURIComponent(target.dataset.lectureId)}`;
+                break;
+            case 'open-login': openLoginModal(target.dataset.courseId, target.dataset.lectureId); break;
+            case 'not-enrolled': showToast('You are not enrolled in this course. Please contact the administration.'); break;
+            case 'quiz-locked': showToast('Complete the previous lecture\'s quiz to unlock this lecture.'); break;
+            case 'close-login-modal': document.getElementById('loginModal')?.remove(); break;
+            case 'submit-login': handleStudentLogin(target.dataset.courseId || null, target.dataset.lectureId || null); break;
+        }
+    });
+
+    render();
+    </script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Quiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="app"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="api.js"></script>
+    <script>
+    const app = document.getElementById('app');
+    const params = new URLSearchParams(window.location.search);
+    const courseId = params.get('courseId');
+    const lectureId = params.get('lectureId');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function showToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    if (!NorthstarAPI.requireStudent()) {
+    }
+
+    let quiz = null;
+    const state = { index: 0, answers: {} };
+
+    function currentQuestion() {
+        return quiz.questions[state.index];
+    }
+
+    function isAnswered(q) {
+        const a = state.answers[q.id];
+        if (!a) return false;
+        if (q.type === 'mcq') return !!a.selectedOptionId;
+        if (a.method === 'text') return !!(a.text && a.text.trim());
+        if (a.method === 'image') return !!a.imageUrl;
+        return false;
+    }
+
+    function renderMcq(q) {
+        const answer = state.answers[q.id];
+        return `
+        <div class="quiz-options">
+          ${q.options.map(opt => `
+            <button type="button" class="quiz-option-btn ${answer && answer.selectedOptionId === opt.id ? 'selected' : ''}" data-action="select-option" data-option-id="${esc(opt.id)}">
+              <span class="quiz-option-letter">${esc(opt.label)}</span>
+              <span>Option ${esc(opt.label)}</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function renderEssay(q) {
+        const answer = state.answers[q.id] || { method: 'text', text: '', imageUrl: null };
+        return `
+        <div class="quiz-answer-toggle">
+          <button type="button" class="${answer.method === 'text' ? 'active' : ''}" data-action="set-method" data-method="text">Write Answer</button>
+          <button type="button" class="${answer.method === 'image' ? 'active' : ''}" data-action="set-method" data-method="image">Upload Photo Answer</button>
+        </div>
+        ${answer.method === 'text' ? `
+          <div class="field" style="margin:0;">
+            <textarea id="essayText" placeholder="Type your answer here" style="min-height:140px;">${esc(answer.text || '')}</textarea>
+          </div>
+        ` : `
+          <div class="field" style="margin:0;">
+            <input type="file" accept="image/*" id="essayImage">
+            ${answer.imageUrl ? `<img src="${esc(answer.imageUrl)}" class="quiz-essay-preview">` : ''}
+          </div>
+        `}
+      `;
+    }
+
+    function renderQuestionScreen() {
+        const q = currentQuestion();
+        const total = quiz.questions.length;
+        const answeredCount = quiz.questions.filter(isAnswered).length;
+        const isLast = state.index === total - 1;
+
+        app.innerHTML = `
+        <div class="quiz-shell">
+          <button class="back-button" data-action="exit-quiz">← Exit Quiz</button>
+          <div class="quiz-progress">
+            <span>Question ${state.index + 1} of ${total}</span>
+            <span>${answeredCount} of ${total} answered</span>
+          </div>
+          <div class="quiz-progress-bar"><div class="quiz-progress-bar-fill" style="width:${((state.index + 1) / total) * 100}%;"></div></div>
+          <div class="quiz-question-card">
+            <img src="${esc(q.imageUrl)}" alt="Question" class="quiz-question-image">
+            ${q.type === 'mcq' ? renderMcq(q) : renderEssay(q)}
+          </div>
+          <div class="quiz-nav">
+            <button class="outline" data-action="prev-question" ${state.index === 0 ? 'disabled' : ''}>← Previous</button>
+            ${isLast ? `<button class="primary" data-action="submit-quiz">Submit Quiz</button>` : `<button class="primary" data-action="next-question">Next →</button>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function selectOption(optionId) {
+        const q = currentQuestion();
+        state.answers[q.id] = { type: 'mcq', selectedOptionId: optionId };
+        renderQuestionScreen();
+    }
+
+    function setEssayMethod(method) {
+        const q = currentQuestion();
+        const prev = state.answers[q.id] || {};
+        state.answers[q.id] = { type: 'essay', method, text: prev.text || '', imageUrl: prev.imageUrl || null };
+        renderQuestionScreen();
+    }
+
+    function saveEssayText() {
+        const q = currentQuestion();
+        if (q.type !== 'essay') return;
+        const textarea = document.getElementById('essayText');
+        if (!textarea) return;
+        const prev = state.answers[q.id] || { type: 'essay', method: 'text' };
+        state.answers[q.id] = { ...prev, type: 'essay', method: 'text', text: textarea.value };
+    }
+
+    async function uploadEssayImage(file) {
+        const q = currentQuestion();
+        try {
+            const url = await NorthstarAPI.uploadFile(file, 'quiz-answers');
+            const prev = state.answers[q.id] || { type: 'essay', method: 'image' };
+            state.answers[q.id] = { ...prev, type: 'essay', method: 'image', imageUrl: url };
+            showToast('Answer image uploaded.');
+        } catch (err) {
+            console.error(err);
+            showToast(err.message || 'Could not upload the image.');
+        }
+        renderQuestionScreen();
+    }
+
+    function goPrev() {
+        saveEssayText();
+        if (state.index > 0) state.index -= 1;
+        renderQuestionScreen();
+    }
+
+    function goNext() {
+        saveEssayText();
+        if (!isAnswered(currentQuestion())) {
+            showToast('Please answer this question before continuing.');
+            return;
+        }
+        if (state.index < quiz.questions.length - 1) state.index += 1;
+        renderQuestionScreen();
+    }
+
+    async function submitQuiz() {
+        saveEssayText();
+        const unanswered = quiz.questions.find(q => !isAnswered(q));
+        if (unanswered) {
+            state.index = quiz.questions.indexOf(unanswered);
+            showToast('Please answer all questions before submitting.');
+            renderQuestionScreen();
+            return;
+        }
+
+        const answers = quiz.questions.map(q => {
+            const a = state.answers[q.id];
+            if (q.type === 'mcq') {
+                return { questionId: q.id, type: 'mcq', selectedOptionId: a.selectedOptionId };
+            }
+            return { questionId: q.id, type: 'essay', method: a.method, text: a.text || '', imageUrl: a.imageUrl || null };
+        });
+
+        try {
+            const attempt = await NorthstarAPI.Quiz.submit(courseId, lectureId, answers);
+            window.location.href = `quiz-result.html?attemptId=${encodeURIComponent(attempt.id)}`;
+        } catch (err) {
+            showToast(err.message || 'Could not submit the quiz. Please try again.');
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'exit-quiz':
+                if (confirm('Leave the quiz? Your progress will not be saved.')) {
+                    window.location.href = `lecture-view.html?courseId=${encodeURIComponent(courseId)}&lectureId=${encodeURIComponent(lectureId)}`;
+                }
+                break;
+            case 'select-option': selectOption(target.dataset.optionId); break;
+            case 'set-method': setEssayMethod(target.dataset.method); break;
+            case 'prev-question': goPrev(); break;
+            case 'next-question': goNext(); break;
+            case 'submit-quiz': submitQuiz(); break;
+        }
+    });
+
+    document.addEventListener('change', (e) => {
+        if (e.target.id === 'essayImage' && e.target.files[0]) {
+            uploadEssayImage(e.target.files[0]);
+        }
+    });
+
+    async function init() {
+        if (!NorthstarAPI.isLoggedIn() || !NorthstarAPI.isStudent()) {
+            window.location.href = `course-details.html?courseId=${encodeURIComponent(courseId || '')}`;
+            return;
+        }
+
+        try {
+            const result = await NorthstarAPI.Quiz.get(courseId, lectureId);
+            if (result.alreadyAttempted) {
+                window.location.href = `quiz-result.html?attemptId=${encodeURIComponent(result.attemptId)}`;
+                return;
+            }
+            quiz = result.quiz;
+            renderQuestionScreen();
+        } catch (err) {
+            window.location.href = `course-details.html?courseId=${encodeURIComponent(courseId || '')}`;
+        }
+    }
+
+    init();
+    </script>
+</body>
+</html>

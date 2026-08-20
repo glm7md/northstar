@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Build Quiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+    <div id="adminApp"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="../api.js"></script>
+    <script>
+    const adminApp = document.getElementById('adminApp');
+    const draftKey = 'northstar_lecture_draft';
+    const courseId = new URLSearchParams(window.location.search).get('courseId');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function makeId() {
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    let toastTimer = null;
+    function adminToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    let draft = null;
+    try {
+        const raw = sessionStorage.getItem(draftKey);
+        draft = raw ? JSON.parse(raw) : null;
+    } catch (err) {
+        draft = null;
+    }
+
+    if (!draft || draft.courseId !== courseId) {
+        window.location.href = `admin-lectures.html?courseId=${encodeURIComponent(courseId || '')}`;
+    }
+
+    let courseTitle = '';
+    let questions = draft && draft.quiz ? JSON.parse(JSON.stringify(draft.quiz.questions)) : [];
+    const quizId = draft && draft.quiz ? draft.quiz.id : makeId();
+
+    function defaultOptions() {
+        return ['A', 'B', 'C', 'D'].map(label => ({ id: makeId(), label }));
+    }
+
+    function nextOptionLabel(count) {
+        return String.fromCharCode(65 + count);
+    }
+
+    function findQuestion(id) {
+        return questions.find(q => q.id === id) || null;
+    }
+
+    function addQuestion(type) {
+        questions.push({
+            id: makeId(),
+            type,
+            imageUrl: null,
+            options: type === 'mcq' ? defaultOptions() : undefined,
+            correctOptionId: type === 'mcq' ? null : undefined
+        });
+        render();
+    }
+
+    function removeQuestion(id) {
+        if (!confirm('Delete this question?')) return;
+        questions = questions.filter(q => q.id !== id);
+        render();
+    }
+
+    function addOption(questionId) {
+        const q = findQuestion(questionId);
+        if (!q) return;
+        q.options.push({ id: makeId(), label: nextOptionLabel(q.options.length) });
+        render();
+    }
+
+    function removeOption(questionId, optionId) {
+        const q = findQuestion(questionId);
+        if (!q) return;
+        if (q.options.length <= 2) {
+            adminToast('A multiple choice question needs at least 2 options.');
+            return;
+        }
+        q.options = q.options.filter(o => o.id !== optionId);
+        if (q.correctOptionId === optionId) q.correctOptionId = null;
+        render();
+    }
+
+    function setCorrect(questionId, optionId) {
+        const q = findQuestion(questionId);
+        if (!q) return;
+        q.correctOptionId = optionId;
+        render();
+    }
+
+    async function uploadQuestionImage(questionId, file) {
+        const q = findQuestion(questionId);
+        if (!q) return;
+        try {
+            q.imageUrl = await NorthstarAPI.uploadFile(file, 'quiz-images');
+            adminToast('Image uploaded.');
+        } catch (err) {
+            console.error(err);
+            adminToast(err.message || 'Could not upload the image.');
+        }
+        render();
+    }
+
+    function questionCard(q, index) {
+        return `
+        <div class="qb-question" data-question-id="${esc(q.id)}">
+          <div class="qb-question-head">
+            <div><b>Question ${index + 1}</b><span class="qb-type-tag">${q.type === 'mcq' ? 'Multiple Choice' : 'Essay'}</span></div>
+            <button type="button" class="btn-delete" data-action="remove-question" data-question-id="${esc(q.id)}">Delete</button>
+          </div>
+          <div class="field">
+            <label>Question Image *</label>
+            <input type="file" accept="image/*" data-role="question-image" data-question-id="${esc(q.id)}">
+            ${q.imageUrl ? `<img src="${esc(q.imageUrl)}" class="qb-image-preview">` : ''}
+          </div>
+          ${q.type === 'mcq' ? `
+            <div class="qb-options">
+              ${q.options.map(opt => `
+                <div class="qb-option-row">
+                  <input type="radio" name="correct-${esc(q.id)}" ${opt.id === q.correctOptionId ? 'checked' : ''} data-role="set-correct" data-question-id="${esc(q.id)}" data-option-id="${esc(opt.id)}">
+                  <label>Option ${esc(opt.label)}${opt.id === q.correctOptionId ? ' — Correct Answer' : ''}</label>
+                  <button type="button" class="btn-delete" data-action="remove-option" data-question-id="${esc(q.id)}" data-option-id="${esc(opt.id)}">Remove</button>
+                </div>
+              `).join('')}
+            </div>
+            <button type="button" class="secondary qb-add-row" data-action="add-option" data-question-id="${esc(q.id)}">+ Add Option</button>
+          ` : `
+            <p class="qb-essay-note">Students will answer this question by writing a response in the site or uploading a photo of their handwritten answer.</p>
+          `}
+        </div>
+      `;
+    }
+
+    function renderPage() {
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          <aside class="admin-sidebar">
+            <div class="mobile-sidebar-head">
+              <span>Menu</span>
+              <button type="button" data-action="close-sidebar">&times;</button>
+            </div>
+            <div class="brand">
+              <span class="brand-mark">N</span> NORTHSTAR
+            </div>
+            <nav>
+              <button type="button" class="admin-nav-link active" data-action="navigate-courses">
+                Courses Management
+              </button>
+              <button type="button" class="admin-nav-link" data-action="navigate-students">
+                Student Accounts
+              </button>
+              <button type="button" class="admin-nav-link" data-action="navigate-grades">
+                Grades
+              </button>
+            </nav>
+            <div class="admin-sidebar-bottom">
+              <div class="admin-profile">
+                <div class="avatar">SA</div>
+                <div>
+                  <b>System Admin</b>
+                  <span>Administrator</span>
+                </div>
+              </div>
+              <button type="button" class="admin-signout" data-action="logout">Sign Out</button>
+            </div>
+          </aside>
+          <main class="admin-main">
+            <button type="button" class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <header class="admin-topbar">
+              <div>
+                <button type="button" class="back-button" data-action="cancel">← Back to Lecture</button>
+                <h1>Build Quiz</h1>
+                <p>${esc(courseTitle)} — ${esc((draft && draft.title) || 'Untitled Lecture')}</p>
+              </div>
+            </header>
+            <section class="admin-panel">
+              <div class="qb-add-type">
+                <button type="button" class="secondary" data-action="add-mcq">+ Add Multiple Choice Question</button>
+                <button type="button" class="secondary" data-action="add-essay">+ Add Essay Question</button>
+              </div>
+              <div id="questionsList">
+                ${questions.length === 0 ? `
+                  <div class="empty-state-admin">
+                    <div class="empty-icon">📝</div>
+                    <h3>No Questions Yet</h3>
+                    <p>Add a multiple choice or essay question to build this quiz.</p>
+                  </div>
+                ` : questions.map((q, i) => questionCard(q, i)).join('')}
+              </div>
+              <div class="form-actions">
+                <button type="button" class="outline" data-action="cancel">Cancel</button>
+                <button type="button" class="primary" data-action="save-quiz">Save Quiz &amp; Return to Lecture</button>
+              </div>
+            </section>
+          </main>
+        </div>
+      `;
+    }
+
+    function render() {
+        renderPage();
+    }
+
+    function validateAndSave() {
+        if (questions.length === 0) {
+            adminToast('Add at least one question before saving.');
+            return;
+        }
+        for (const q of questions) {
+            if (!q.imageUrl) {
+                adminToast('Every question needs an uploaded image.');
+                return;
+            }
+            if (q.type === 'mcq' && !q.correctOptionId) {
+                adminToast('Select the correct answer for every multiple choice question.');
+                return;
+            }
+        }
+
+        draft.quiz = { id: quizId, questions };
+        sessionStorage.setItem(draftKey, JSON.stringify(draft));
+        window.location.href = `admin-lectures.html?courseId=${encodeURIComponent(courseId)}`;
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) {
+            const openSidebar = document.querySelector('.admin-sidebar.open');
+            if (openSidebar && !openSidebar.contains(e.target) && !e.target.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'toggle-sidebar': document.querySelector('.admin-sidebar')?.classList.toggle('open'); break;
+            case 'close-sidebar': document.querySelector('.admin-sidebar')?.classList.remove('open'); break;
+            case 'navigate-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'navigate-students': window.location.href = 'admin-students.html'; break;
+            case 'navigate-grades': window.location.href = 'admin-grades.html'; break;
+            case 'logout':
+                NorthstarAPI.clearSession();
+                window.location.href = '../login.html';
+                break;
+            case 'add-mcq': addQuestion('mcq'); break;
+            case 'add-essay': addQuestion('essay'); break;
+            case 'remove-question': removeQuestion(target.dataset.questionId); break;
+            case 'add-option': addOption(target.dataset.questionId); break;
+            case 'remove-option': removeOption(target.dataset.questionId, target.dataset.optionId); break;
+            case 'save-quiz': validateAndSave(); break;
+            case 'cancel':
+                window.location.href = `admin-lectures.html?courseId=${encodeURIComponent(courseId)}`;
+                break;
+        }
+    });
+
+    document.addEventListener('change', (e) => {
+        if (e.target.dataset.role === 'question-image' && e.target.files[0]) {
+            uploadQuestionImage(e.target.dataset.questionId, e.target.files[0]);
+        }
+        if (e.target.dataset.role === 'set-correct') {
+            setCorrect(e.target.dataset.questionId, e.target.dataset.optionId);
+        }
+    });
+
+    async function init() {
+        if (!NorthstarAPI.requireAdmin()) return;
+        if (!draft) return;
+        try {
+            const course = await NorthstarAPI.Admin.getCourse(courseId);
+            courseTitle = course.title;
+        } catch (err) {
+            courseTitle = '';
+        }
+        renderPage();
+    }
+
+    init();
+    </script>
+</body>
+</html>

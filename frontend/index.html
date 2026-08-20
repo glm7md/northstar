@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Learning Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
+    <style>
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div id="toast" class="toast"></div>
+
+    <script src="api.js"></script>
+    <script>
+    const app = document.getElementById('app');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function selectYear(year) {
+        sessionStorage.setItem('northstar_selected_year', year);
+
+        if (NorthstarAPI.isLoggedIn() && NorthstarAPI.isStudent()) {
+            window.location.href = 'dashboard.html';
+            return;
+        }
+
+        sessionStorage.setItem('northstar_guest_year', year);
+        window.location.href = 'dashboard.html';
+    }
+
+    function renderYearSelection() {
+        const years = ['First Year', 'Second Year', 'Third Year', 'Fourth Year'];
+
+        app.innerHTML = `
+        <main class="year-selection-page">
+          <div class="year-selection-header">
+            <div class="brand">
+              <span class="brand-mark">N</span> NORTHSTAR UNIVERSITY
+            </div>
+            <h1>Select Your Academic Year</h1>
+            <p>Choose your year to access the learning materials and course content available for your academic level.</p>
+          </div>
+          <div class="year-grid">
+            ${years.map((year, index) => `
+              <div class="year-card" data-action="select-year" data-year="${esc(year)}">
+                <div class="year-card-icon">${index + 1}</div>
+                <h3>${esc(year)}</h3>
+                <p>Access all courses and learning materials for ${esc(year.toLowerCase())} students</p>
+              </div>
+            `).join('')}
+          </div>
+          <footer class="site-footer" style="margin-top:14px; min-height:0; padding:0 16px; color:rgba(255,255,255,.7);">© 2026 Northstar University. All Rights Reserved.</footer>
+          <div class="admin-link">
+            <button data-action="open-signin">Sign In</button>
+          </div>
+        </main>
+      `;
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+
+        switch (action) {
+            case 'select-year': selectYear(target.dataset.year); break;
+            case 'open-signin': window.location.href = 'login.html'; break;
+        }
+    });
+
+    renderYearSelection();
+    </script>
+</body>
+</html>

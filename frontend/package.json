@@ -1,0 +1,11 @@
+{
+  "name": "northstar-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "http-server . -p $PORT -c-1"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  }
+}

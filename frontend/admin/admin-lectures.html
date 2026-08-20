@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar University | Manage Lectures</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+    <div id="adminApp"></div>
+    <div id="toast" class="toast"></div>
+    <footer class="site-footer">© 2026 Northstar University. All Rights Reserved.</footer>
+
+    <script src="../api.js"></script>
+    <script>
+    const adminApp = document.getElementById('adminApp');
+    const draftKey = 'northstar_lecture_draft';
+    const courseId = new URLSearchParams(window.location.search).get('courseId');
+
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    let toastTimer = null;
+    function adminToast(message) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    let course = null;
+
+    const viewState = { mode: 'list', pdfInputOpen: false };
+    let currentDraft = null;
+
+    function loadMatchingDraft() {
+        try {
+            const raw = sessionStorage.getItem(draftKey);
+            if (!raw) return null;
+            const draft = JSON.parse(raw);
+            if (draft.courseId !== courseId) {
+                sessionStorage.removeItem(draftKey);
+                return null;
+            }
+            return draft;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function persistDraft() {
+        sessionStorage.setItem(draftKey, JSON.stringify(currentDraft));
+    }
+
+    function clearDraft() {
+        sessionStorage.removeItem(draftKey);
+        currentDraft = null;
+    }
+
+    function adminSidebar() {
+        return `
+        <aside class="admin-sidebar">
+          <div class="mobile-sidebar-head">
+            <span>Menu</span>
+            <button type="button" data-action="close-sidebar">&times;</button>
+          </div>
+          <div class="brand">
+            <span class="brand-mark">N</span> NORTHSTAR
+          </div>
+          <nav>
+            <button type="button" class="admin-nav-link active" data-action="navigate-courses">
+              Courses Management
+            </button>
+            <button type="button" class="admin-nav-link" data-action="navigate-students">
+              Student Accounts
+            </button>
+            <button type="button" class="admin-nav-link" data-action="navigate-grades">
+              Grades
+            </button>
+          </nav>
+          <div class="admin-sidebar-bottom">
+            <div class="admin-profile">
+              <div class="avatar">SA</div>
+              <div>
+                <b>System Admin</b>
+                <span>Administrator</span>
+              </div>
+            </div>
+            <button type="button" class="admin-signout" data-action="logout">Sign Out</button>
+          </div>
+        </aside>
+      `;
+    }
+
+    function adminCourseLecturesPage() {
+        if (!course) {
+            return `
+            <div class="empty-state-admin">
+              <div class="empty-icon">📚</div>
+              <h3>Course Not Found</h3>
+              <button class="back-button" data-action="back-to-courses">← Back to Courses</button>
+            </div>
+          `;
+        }
+
+        const lectures = course.lectures || [];
+
+        return `
+        <header class="admin-topbar">
+          <div>
+            <button type="button" class="back-button" data-action="back-to-courses">← Back to Courses</button>
+            <h1>${esc(course.title)}</h1>
+            <p>Manage lectures for this course</p>
+          </div>
+        </header>
+        <section class="admin-panel">
+          <div class="admin-panel-header">
+            <div>
+              <h3>Lectures</h3>
+              <p>${lectures.length} lecture${lectures.length === 1 ? '' : 's'}</p>
+            </div>
+            <button type="button" class="secondary" data-action="add-lecture">+ Add Lecture</button>
+          </div>
+          ${lectures.length === 0 ? `
+            <div class="empty-state-admin">
+              <div class="empty-icon">📹</div>
+              <h3>No Lectures</h3>
+              <p>This course has no lectures yet. Click "Add Lecture" to create one.</p>
+            </div>
+          ` : `
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Lecture Title</th>
+                  <th>Video</th>
+                  <th>PDF</th>
+                  <th>Quiz</th>
+                  <th>Type</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lectures.map((lecture, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td><strong>${esc(lecture.title)}</strong></td>
+                    <td>${lecture.videoData ? '✓ Yes' : '✗ No'}</td>
+                    <td>${lecture.pdfData ? '✓ Yes' : '✗ No'}</td>
+                    <td>${lecture.quiz ? `✓ ${lecture.quiz.questions.length} Q` : '✗ No'}</td>
+                    <td><span class="badge ${index === 0 ? 'free' : 'premium'}">${index === 0 ? 'FREE' : 'PREMIUM'}</span></td>
+                    <td>
+                      <div class="admin-actions">
+                        <button type="button" class="btn-edit" data-action="edit-lecture" data-lecture-id="${esc(lecture.id)}">Edit</button>
+                        ${lecture.quiz ? `<button type="button" class="btn-edit" data-action="view-submissions" data-lecture-id="${esc(lecture.id)}">Submissions</button>` : ''}
+                        <button type="button" class="btn-delete" data-action="delete-lecture" data-lecture-id="${esc(lecture.id)}">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </section>
+      `;
+    }
+
+    function quizSummary(quiz) {
+        const mcqCount = quiz.questions.filter(q => q.type === 'mcq').length;
+        const essayCount = quiz.questions.filter(q => q.type === 'essay').length;
+        return `${quiz.questions.length} question${quiz.questions.length === 1 ? '' : 's'} — ${mcqCount} multiple choice, ${essayCount} essay`;
+    }
+
+    function adminLectureForm() {
+        const isEditing = !!currentDraft.lectureId;
+
+        return `
+        <header class="admin-topbar">
+          <div>
+            <button type="button" class="back-button" data-action="back-to-lectures">← Back to Lectures</button>
+            <h1>${isEditing ? 'Edit Lecture' : 'Add New Lecture'}</h1>
+            <p>${isEditing ? 'Update lecture details' : 'Add a new lecture to'} ${esc(course.title)}</p>
+          </div>
+        </header>
+        <section class="admin-panel admin-form-section">
+          <div class="field">
+            <label>Lecture Title *</label>
+            <input id="lectureTitle" type="text" value="${esc(currentDraft.title)}" placeholder="Enter lecture title">
+          </div>
+          <div class="field">
+            <label>YouTube Video URL</label>
+            <input id="lectureVideoUrl" type="text" value="${esc(currentDraft.videoData || '')}" placeholder="https://youtu.be/VIDEO_ID">
+          </div>
+
+          <div class="field">
+            <label>Lecture PDF</label>
+            ${currentDraft.pdfData ? `
+              <div class="material-card" style="margin:0;">
+                <div class="material-card-left">
+                  <div class="material-icon">📄</div>
+                  <div class="material-info">
+                    <b>${esc(currentDraft.pdfData.name)}</b>
+                    <span>Attached to this lecture</span>
+                  </div>
+                </div>
+                <div class="material-actions">
+                  <label class="secondary" style="cursor:pointer;">
+                    Replace
+                    <input type="file" accept="application/pdf" id="lecturePdf" style="display:none;">
+                  </label>
+                  <button type="button" class="btn-delete" data-action="remove-pdf">Remove</button>
+                </div>
+              </div>
+            ` : viewState.pdfInputOpen ? `
+              <input id="lecturePdf" type="file" accept="application/pdf">
+            ` : `
+              <div class="lecture-add-buttons">
+                <button type="button" class="secondary" data-action="show-pdf-input">+ Add PDF</button>
+              </div>
+            `}
+          </div>
+
+          <div class="field">
+            <label>Lecture Quiz</label>
+            ${currentDraft.quiz ? `
+              <div class="material-card" style="margin:0; background:#e8f5e9; border-color:#bfe0c9;">
+                <div class="material-card-left">
+                  <div class="material-icon">📝</div>
+                  <div class="material-info">
+                    <b>Quiz Attached</b>
+                    <span>${quizSummary(currentDraft.quiz)}</span>
+                  </div>
+                </div>
+                <div class="material-actions">
+                  <button type="button" class="secondary" data-action="edit-quiz">Edit Quiz</button>
+                  <button type="button" class="btn-delete" data-action="remove-quiz">Remove</button>
+                </div>
+              </div>
+            ` : `
+              <div class="lecture-add-buttons">
+                <button type="button" class="secondary" data-action="add-quiz">+ Add Quiz</button>
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin:0;">Students must complete this quiz before the next lecture unlocks.</p>
+            `}
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="outline" data-action="cancel-lecture-form">Cancel</button>
+            <button type="button" class="primary" data-action="save-lecture">${isEditing ? 'Update Lecture' : 'Save Lecture'}</button>
+          </div>
+        </section>
+      `;
+    }
+
+    async function uploadPdf(file) {
+        try {
+            const url = await NorthstarAPI.uploadFile(file, 'pdfs');
+            currentDraft.pdfData = { url, name: file.name };
+            viewState.pdfInputOpen = false;
+            persistDraft();
+            adminToast('PDF uploaded.');
+        } catch (err) {
+            console.error(err);
+            adminToast(err.message || 'Could not upload the PDF file.');
+        }
+        renderContent();
+    }
+
+    function openForm(lecture) {
+        currentDraft = {
+            courseId,
+            lectureId: lecture ? lecture.id : null,
+            title: lecture ? lecture.title : '',
+            videoData: lecture && lecture.videoData ? `https://youtu.be/${lecture.videoData}` : null,
+            pdfData: lecture ? (lecture.pdfData || null) : null,
+            quiz: lecture ? (lecture.quiz || null) : null,
+            hadQuizInitially: !!(lecture && lecture.quiz)
+        };
+        viewState.pdfInputOpen = false;
+        persistDraft();
+        viewState.mode = 'form';
+        renderContent();
+    }
+
+    async function saveLecture() {
+        if (!course) return;
+        const title = document.getElementById('lectureTitle').value.trim();
+
+        if (!title) {
+            adminToast('Please enter a lecture title.');
+            return;
+        }
+
+        currentDraft.title = title;
+
+        try {
+            let lectureId = currentDraft.lectureId;
+            if (!lectureId) {
+                const lecture = await NorthstarAPI.Admin.createLecture(courseId, {
+                    title: currentDraft.title,
+                    videoData: currentDraft.videoData,
+                    pdfData: currentDraft.pdfData
+                });
+                lectureId = lecture.id;
+            } else {
+                await NorthstarAPI.Admin.updateLecture(courseId, lectureId, {
+                    title: currentDraft.title,
+                    videoData: currentDraft.videoData,
+                    pdfData: currentDraft.pdfData
+                });
+            }
+
+            if (currentDraft.quiz) {
+                await NorthstarAPI.Admin.upsertQuiz(courseId, lectureId, currentDraft.quiz);
+            } else if (currentDraft.hadQuizInitially) {
+                await NorthstarAPI.Admin.deleteQuiz(courseId, lectureId);
+            }
+
+            adminToast(currentDraft.lectureId ? 'Lecture updated successfully!' : 'Lecture added successfully!');
+        } catch (err) {
+            adminToast(err.message || 'Could not save the lecture.');
+            return;
+        }
+
+        clearDraft();
+        viewState.mode = 'list';
+        await loadCourse();
+        renderContent();
+    }
+
+
+    async function deleteLecture(lectureId) {
+        if (!confirm('Are you sure you want to delete this lecture?')) return;
+        try {
+            await NorthstarAPI.Admin.deleteLecture(courseId, lectureId);
+            adminToast('Lecture deleted.');
+        } catch (err) {
+            adminToast(err.message || 'Could not delete the lecture.');
+        }
+        await loadCourse();
+        renderContent();
+    }
+
+    function renderContent() {
+        const content = document.getElementById('adminContent');
+        if (!content) return;
+        content.innerHTML = viewState.mode === 'form' ? adminLectureForm() : adminCourseLecturesPage();
+    }
+
+    async function loadCourse() {
+        try {
+            course = await NorthstarAPI.Admin.getCourse(courseId);
+        } catch (err) {
+            course = null;
+        }
+    }
+
+    async function renderAdminPanel() {
+        adminApp.innerHTML = `
+        <div class="admin-shell">
+          ${adminSidebar()}
+          <main class="admin-main">
+            <button type="button" class="mobile-menu-button" data-action="toggle-sidebar">☰ Menu</button>
+            <div id="adminContent"><div class="loading-state">Loading course…</div></div>
+          </main>
+        </div>
+      `;
+        await loadCourse();
+
+        const restoredDraft = loadMatchingDraft();
+        if (restoredDraft) {
+            currentDraft = restoredDraft;
+            viewState.mode = 'form';
+        }
+
+        renderContent();
+    }
+
+    document.addEventListener('click', (e) => {
+        let clickedEl = e.target;
+        if (clickedEl && clickedEl.nodeType !== Node.ELEMENT_NODE) {
+            clickedEl = clickedEl.parentElement;
+        }
+        const target = clickedEl && clickedEl.closest ? clickedEl.closest('[data-action]') : null;
+
+        if (!target) {
+            const openSidebar = document.querySelector('.admin-sidebar.open');
+            if (openSidebar && !openSidebar.contains(clickedEl) && !clickedEl.closest('.mobile-menu-button')) {
+                openSidebar.classList.remove('open');
+            }
+            return;
+        }
+
+        const action = target.dataset.action;
+        if (action !== 'save-lecture') e.preventDefault();
+
+        switch (action) {
+            case 'toggle-sidebar': document.querySelector('.admin-sidebar')?.classList.toggle('open'); break;
+            case 'close-sidebar': document.querySelector('.admin-sidebar')?.classList.remove('open'); break;
+            case 'navigate-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'navigate-students': window.location.href = 'admin-students.html'; break;
+            case 'navigate-grades': window.location.href = 'admin-grades.html'; break;
+            case 'logout':
+                NorthstarAPI.clearSession();
+                window.location.href = '../login.html';
+                break;
+            case 'back-to-courses': window.location.href = 'admin-dashboard.html'; break;
+            case 'add-lecture': openForm(null); break;
+            case 'edit-lecture':
+                openForm((course.lectures || []).find(l => l.id === target.dataset.lectureId) || null);
+                break;
+            case 'delete-lecture': deleteLecture(target.dataset.lectureId); break;
+            case 'view-submissions':
+                window.location.href = `admin-submissions.html?courseId=${encodeURIComponent(courseId)}&lectureId=${encodeURIComponent(target.dataset.lectureId)}`;
+                break;
+            case 'back-to-lectures':
+                clearDraft();
+                viewState.mode = 'list';
+                renderContent();
+                break;
+            case 'save-lecture': saveLecture(); break;
+            case 'cancel-lecture-form':
+                clearDraft();
+                viewState.mode = 'list';
+                renderContent();
+                break;
+            case 'show-pdf-input':
+                viewState.pdfInputOpen = true;
+                renderContent();
+                break;
+            case 'remove-pdf':
+                currentDraft.pdfData = null;
+                persistDraft();
+                renderContent();
+                break;
+            case 'add-quiz':
+            case 'edit-quiz': {
+                const title = document.getElementById('lectureTitle');
+                if (title) currentDraft.title = title.value.trim();
+                persistDraft();
+                window.location.href = `admin-quiz-builder.html?courseId=${encodeURIComponent(courseId)}`;
+                break;
+            }
+            case 'remove-quiz':
+                if (!confirm('Remove the quiz attached to this lecture?')) break;
+                currentDraft.quiz = null;
+                persistDraft();
+                renderContent();
+                break;
+        }
+    });
+
+    document.addEventListener('change', (e) => {
+        if (e.target.id === 'lecturePdf' && e.target.files[0]) {
+            uploadPdf(e.target.files[0]);
+        }
+    });
+
+    document.addEventListener('input', (e) => {
+        if (e.target.id === 'lectureTitle' && currentDraft) {
+            currentDraft.title = e.target.value;
+            persistDraft();
+        }
+        if (e.target.id === 'lectureVideoUrl' && currentDraft) {
+            currentDraft.videoData = e.target.value.trim() || null;
+            persistDraft();
+        }
+    });
+
+    if (NorthstarAPI.requireAdmin()) renderAdminPanel();
+    </script>
+</body>
+</html>
