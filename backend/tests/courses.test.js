@@ -94,7 +94,7 @@ describe('Admin course & student management', () => {
     await global.__TEST_PG_POOL__.query(
       `INSERT INTO students (id, name, email, username, password_hash, year, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      ['legacy-admin-student', 'System Admin', 'admin@example.com', 'admin', 'not-used', 'First Year', Date.now()]
+      ['legacy-admin-student', 'System Admin', 'admin@example.com', 'admin@example.com', 'not-used', 'First Year', Date.now()]
     );
 
     const res = await request(app).get('/api/admin/students').set('Authorization', `Bearer ${adminToken}`);

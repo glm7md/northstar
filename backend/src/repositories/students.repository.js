@@ -45,7 +45,12 @@ async function list() {
   const studentRows = rows.filter((student) => {
     const username = String(student.username || '').toLowerCase();
     const email = String(student.email || '').toLowerCase();
-    return !adminUsernames.has(username) && !adminUsernames.has(email);
+    const emailUsername = email.split('@')[0];
+    return (
+      !adminUsernames.has(username) &&
+      !adminUsernames.has(email) &&
+      !adminUsernames.has(emailUsername)
+    );
   });
   return attachEnrollments(studentRows);
 }
