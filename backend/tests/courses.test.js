@@ -89,4 +89,16 @@ describe('Admin course & student management', () => {
       expect(student.password).toBeUndefined();
     }
   });
+
+  test('admin accounts are excluded from the student list', async () => {
+    await global.__TEST_PG_POOL__.query(
+      `INSERT INTO students (id, name, email, username, password_hash, year, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      ['legacy-admin-student', 'System Admin', 'admin@example.com', 'admin', 'not-used', 'First Year', Date.now()]
+    );
+
+    const res = await request(app).get('/api/admin/students').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.students.some((student) => student.id === 'legacy-admin-student')).toBe(false);
+  });
 });

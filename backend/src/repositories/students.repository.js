@@ -34,8 +34,20 @@ async function attachEnrollments(rows) {
 }
 
 async function list() {
-  const { rows } = await db.query('SELECT * FROM students ORDER BY created_at ASC');
-  return attachEnrollments(rows);
+  // Older installations may have a copy of the administrator in `students`.
+  // Admins belong only in the `admins` table, so never return those legacy
+  // records in student-facing admin lists or grade reports.
+  const [{ rows }, { rows: adminRows }] = await Promise.all([
+    db.query('SELECT * FROM students ORDER BY created_at ASC'),
+    db.query('SELECT username FROM admins'),
+  ]);
+  const adminUsernames = new Set(adminRows.map((admin) => String(admin.username).toLowerCase()));
+  const studentRows = rows.filter((student) => {
+    const username = String(student.username || '').toLowerCase();
+    const email = String(student.email || '').toLowerCase();
+    return !adminUsernames.has(username) && !adminUsernames.has(email);
+  });
+  return attachEnrollments(studentRows);
 }
 
 async function findById(studentId) {
