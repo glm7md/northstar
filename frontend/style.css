@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
-
 :root {
     --navy: #102b46;
     --navy-deep: #0a1c2d;
@@ -23,7 +21,7 @@ body {
     min-height: 100vh;
     background: var(--paper);
     color: var(--ink);
-    font-family: 'Cairo', Tahoma, Arial, sans-serif;
+    font-family: 'DM Sans', Arial, "Helvetica Neue", sans-serif;
     display: flex;
     flex-direction: column;
 }

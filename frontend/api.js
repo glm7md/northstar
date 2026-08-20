@@ -229,6 +229,17 @@
         if (!contentColumn) return;
 
         let footer = document.querySelector('.site-footer');
+        const footerTextFixed = '© 2026 Dr. Maged. All Rights Reserved.';
+        if (!footer) {
+            footer = document.createElement('footer');
+            footer.className = 'site-footer';
+            footer.textContent = footerTextFixed;
+        }
+        if (footer.textContent !== footerTextFixed) footer.textContent = footerTextFixed;
+        if (footer.parentElement !== contentColumn) contentColumn.appendChild(footer);
+        return;
+
+        /*
         if (!footer) {
             footer = document.createElement('footer');
             footer.className = 'site-footer';
@@ -237,9 +248,13 @@
 
         footer.textContent = '© 2026 دكتور ماجد. جميع الحقوق محفوظة.';
 
+        const footerText = '© 2026 Dr. Maged. All Rights Reserved.';
+        if (footer.textContent !== footerText) footer.textContent = footerText;
+
         if (footer.parentElement !== contentColumn) {
             contentColumn.appendChild(footer);
         }
+        */
     }
 
     const footerLayoutObserver = new MutationObserver(placeLayoutFooter);
